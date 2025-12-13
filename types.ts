@@ -1,8 +1,11 @@
+
 export interface StoryboardScene {
   caption: string;
   visual_prompt: string;
   imageUrl?: string; // Added after generation
+  videoUrl?: string; // Added for user-uploaded video replacement
   isLoadingImage?: boolean;
+  isRegenerating?: boolean; // Loading state for regeneration
   isUserUploaded?: boolean; // Track if the user manually provided the image
   timestamp?: number; // Estimated start time in seconds
 }

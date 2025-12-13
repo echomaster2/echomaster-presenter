@@ -42,11 +42,11 @@ const PlayerOverlay: React.FC<PlayerOverlayProps> = ({ audioUrl, scenes, title, 
   // Handle Image Transition Logic
   useEffect(() => {
     if (currentScene?.imageUrl) {
-      // After the animation duration (700ms), update the background to match the current image
+      // After the animation duration (1200ms), update the background to match the current image
       // This prepares the background for the NEXT transition
       const timer = setTimeout(() => {
         setBackgroundImage(currentScene.imageUrl);
-      }, 700); 
+      }, 1200); 
       return () => clearTimeout(timer);
     }
   }, [currentScene?.imageUrl]);
@@ -106,6 +106,38 @@ const PlayerOverlay: React.FC<PlayerOverlayProps> = ({ audioUrl, scenes, title, 
     }
   };
 
+  // Helper to get marker positions
+  const getMarkerPosition = (timestamp: number) => {
+    if (!duration) return 0;
+    return (timestamp / duration) * 100;
+  };
+
+  // Helper to parse markdown-style formatting in captions
+  const renderFormattedText = (text: string | undefined) => {
+    if (!text) return null;
+    const parts = text.split(/(\*\*.*?\*\*|\*.*?\*)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={i} className="text-orange-500 font-bold">{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith('*') && part.endsWith('*')) {
+        return <em key={i} className="text-cyan-400 italic">{part.slice(1, -1)}</em>;
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
+  // Deterministically select an animation effect based on scene index
+  const getAnimationClass = (index: number) => {
+    const animations = [
+      'ken-burns-effect-1', // Zoom In + Pan Down-Right
+      'ken-burns-effect-2', // Zoom Out + Pan Up-Left
+      'ken-burns-effect-3', // Zoom In + Pan Down-Left
+      'ken-burns-effect-4'  // Zoom Out + Pan Up-Right
+    ];
+    return animations[index % animations.length];
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-[#0b1120] flex flex-col items-center justify-center animate-fade-in">
       <button 
@@ -131,23 +163,27 @@ const PlayerOverlay: React.FC<PlayerOverlayProps> = ({ audioUrl, scenes, title, 
         {/* Visual Stage - Monitor Look */}
         <div className="relative aspect-video w-full bg-black border-4 border-slate-800 shadow-2xl mb-8 group overflow-hidden rounded-sm ring-1 ring-slate-700">
           
-          {/* Layer 1: Background Image */}
+          {/* Layer 1: Background Image (Previous Scene) */}
           {backgroundImage && (
             <img 
               src={backgroundImage} 
               alt="Background" 
-              className="absolute inset-0 w-full h-full object-contain bg-black opacity-100" 
+              className="absolute inset-0 w-full h-full object-cover bg-black opacity-100 filter brightness-50" 
             />
           )}
 
-          {/* Layer 2: Foreground Image */}
+          {/* Layer 2: Foreground Image (Current Scene with Ken Burns) */}
           {currentScene?.imageUrl ? (
-            <img 
-              key={currentScene.imageUrl}
-              src={currentScene.imageUrl} 
-              alt={currentScene.caption} 
-              className="absolute inset-0 w-full h-full object-contain bg-black animate-cinematic-fade" 
-            />
+            <div 
+                key={currentScene.imageUrl} 
+                className="absolute inset-0 w-full h-full animate-soft-fade-in"
+            >
+                <img 
+                    src={currentScene.imageUrl} 
+                    alt={currentScene.caption} 
+                    className={`w-full h-full object-cover ${getAnimationClass(activeSceneIndex)}`} 
+                />
+            </div>
           ) : (
              <div className="absolute inset-0 w-full h-full flex items-center justify-center">
                  <div className="text-cyan-500 font-mono text-sm animate-pulse">NO SIGNAL / RENDERING</div>
@@ -164,10 +200,9 @@ const PlayerOverlay: React.FC<PlayerOverlayProps> = ({ audioUrl, scenes, title, 
             <div className="absolute bottom-10 inset-x-0 flex justify-center z-40 px-8">
                <div className="bg-black/80 px-6 py-3 border-l-4 border-orange-500 backdrop-blur-sm max-w-4xl animate-slide-up">
                   <p 
-                    key={currentScene?.caption} 
                     className="text-white text-xl md:text-2xl font-semibold text-center leading-relaxed font-sans"
                   >
-                    {currentScene?.caption}
+                    {renderFormattedText(currentScene?.caption)}
                   </p>
                </div>
             </div>
@@ -176,18 +211,77 @@ const PlayerOverlay: React.FC<PlayerOverlayProps> = ({ audioUrl, scenes, title, 
 
         {/* Controls Console */}
         <div className="w-full max-w-4xl mx-auto bg-slate-900 border border-slate-800 p-6 rounded-sm shadow-xl">
-          {/* Progress Bar */}
+          
+          {/* Progress Bar with Chapter Markers */}
           <div className="flex items-center gap-4 text-sm text-cyan-400 font-mono mb-6">
-            <span>{formatTime(currentTime)}</span>
-            <input 
-              type="range" 
-              min="0" 
-              max={duration || 100} 
-              value={currentTime} 
-              onChange={handleSeek}
-              className="flex-1 h-2 bg-slate-800 rounded-none appearance-none cursor-pointer accent-orange-500 hover:accent-orange-400 transition-all"
-            />
-            <span>{formatTime(duration)}</span>
+            <span className="w-10 text-right">{formatTime(currentTime)}</span>
+            
+            <div className="relative flex-1 h-6 flex items-center group/timeline">
+                {/* Background Track */}
+                <div className="absolute inset-x-0 h-1.5 bg-slate-800 border border-slate-700 rounded-sm"></div>
+
+                {/* Filled Track */}
+                <div 
+                    className="absolute left-0 h-1.5 bg-orange-500 pointer-events-none transition-all duration-100 ease-linear rounded-sm"
+                    style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+                ></div>
+
+                {/* Chapter Markers */}
+                {duration > 0 && scenes.map((scene, idx) => {
+                    const pct = getMarkerPosition(scene.timestamp || 0);
+                    if (pct < 0 || pct > 100) return null;
+                    return (
+                        <div 
+                            key={`marker-${idx}`}
+                            className="absolute top-1/2 -translate-y-1/2 w-0.5 h-3 bg-cyan-500/50 group-hover/timeline:bg-cyan-400 z-10 pointer-events-none"
+                            style={{ left: `${pct}%` }}
+                        ></div>
+                    );
+                })}
+                
+                {/* Interactive Tooltip Markers Overlay (Clickable) */}
+                {duration > 0 && scenes.map((scene, idx) => {
+                    const pct = getMarkerPosition(scene.timestamp || 0);
+                    if (pct < 0 || pct > 100) return null;
+                    
+                    return (
+                        <div 
+                            key={`tooltip-${idx}`}
+                            className="absolute top-1/2 -translate-y-1/2 w-4 h-6 -ml-2 z-20 cursor-pointer group/marker"
+                            style={{ left: `${pct}%` }}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if(audioRef.current) {
+                                    audioRef.current.currentTime = scene.timestamp || 0;
+                                    setCurrentTime(scene.timestamp || 0);
+                                }
+                            }}
+                        >
+                             {/* The Tooltip Bubble */}
+                             <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-black/90 text-white text-[10px] px-2 py-1 whitespace-nowrap border border-cyan-500 rounded hidden group-hover/marker:block z-50">
+                                Scene {idx + 1}
+                             </div>
+                             
+                             {/* Hover Highlight Spot */}
+                             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white opacity-0 group-hover/marker:opacity-100 transition-opacity shadow-[0_0_10px_rgba(255,255,255,0.8)]"></div>
+                        </div>
+                    );
+                })}
+
+                {/* Input Overlay */}
+                <input 
+                  type="range" 
+                  min="0" 
+                  max={duration || 100} 
+                  step="0.01"
+                  value={currentTime} 
+                  onChange={handleSeek}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-30"
+                  title="Seek"
+                />
+            </div>
+
+            <span className="w-10">{formatTime(duration)}</span>
           </div>
 
           {/* Buttons Row */}
@@ -278,14 +372,57 @@ const PlayerOverlay: React.FC<PlayerOverlayProps> = ({ audioUrl, scenes, title, 
         .animate-fade-in {
           animation: fadeIn 0.3s ease-out forwards;
         }
-        
-        /* Combines opacity fade with a subtle zoom out for a cinematic feel */
-        .animate-cinematic-fade {
-          animation: cinematicFade 0.7s ease-out forwards;
+
+        .animate-soft-fade-in {
+          animation: softFadeIn 1.2s ease-in-out forwards;
         }
 
         .animate-slide-up {
           animation: slideUp 0.3s ease-out forwards;
+        }
+
+        /* KEN BURNS ANIMATIONS - COMBINED EFFECTS */
+        /* Subtle movement (1.15 scale) over 24s for a cinematic feel */
+        
+        .ken-burns-effect-1 {
+          animation: kbEffect1 24s linear forwards;
+          transform-origin: center center;
+        }
+        .ken-burns-effect-2 {
+          animation: kbEffect2 24s linear forwards;
+          transform-origin: center center;
+        }
+        .ken-burns-effect-3 {
+          animation: kbEffect3 24s linear forwards;
+          transform-origin: center center;
+        }
+        .ken-burns-effect-4 {
+          animation: kbEffect4 24s linear forwards;
+          transform-origin: center center;
+        }
+
+        /* 1: Zoom In + Pan slightly Right/Down */
+        @keyframes kbEffect1 {
+          0% { transform: scale(1.0) translate(0, 0); }
+          100% { transform: scale(1.15) translate(-2%, -2%); }
+        }
+
+        /* 2: Zoom Out + Pan slightly Left/Up */
+        @keyframes kbEffect2 {
+          0% { transform: scale(1.15) translate(2%, 2%); }
+          100% { transform: scale(1.0) translate(0, 0); }
+        }
+
+        /* 3: Zoom In + Pan slightly Left/Down */
+        @keyframes kbEffect3 {
+          0% { transform: scale(1.0) translate(0, 0); }
+          100% { transform: scale(1.15) translate(2%, -2%); }
+        }
+
+        /* 4: Zoom Out + Pan slightly Right/Up */
+        @keyframes kbEffect4 {
+          0% { transform: scale(1.15) translate(-2%, 2%); }
+          100% { transform: scale(1.0) translate(0, 0); }
         }
 
         @keyframes fadeIn {
@@ -293,15 +430,9 @@ const PlayerOverlay: React.FC<PlayerOverlayProps> = ({ audioUrl, scenes, title, 
           to { opacity: 1; }
         }
 
-        @keyframes cinematicFade {
-          0% { 
-            opacity: 0; 
-            transform: scale(1.02); 
-          }
-          100% { 
-            opacity: 1; 
-            transform: scale(1); 
-          }
+        @keyframes softFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
 
         @keyframes slideUp {

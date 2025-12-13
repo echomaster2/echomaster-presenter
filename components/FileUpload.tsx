@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Upload, Music, AlertCircle, Mic2 } from 'lucide-react';
+import { Upload, Music, AlertCircle, Mic2, Video } from 'lucide-react';
 
 interface FileUploadProps {
   onFileSelect: (file: File) => void;
@@ -39,13 +39,19 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, disabled }) => {
 
   const validateAndSelect = (file: File) => {
     setError(null);
-    if (!file.type.startsWith('audio/')) {
-      setError("Please upload a valid audio file (MP3, WAV, etc).");
+    const isAudio = file.type.startsWith('audio/');
+    const isVideo = file.type.startsWith('video/');
+
+    if (!isAudio && !isVideo) {
+      setError("Please upload a valid audio or video file.");
       return;
     }
-    // Limit to ~10MB for this demo
-    if (file.size > 10 * 1024 * 1024) {
-      setError("File size is too large. Please upload a file smaller than 10MB.");
+    // Limit to 20MB for inline data API limits
+    if (file.size > 20 * 1024 * 1024) {
+      setError(isVideo 
+        ? "File exceeds 20MB. Please use shorter video clips (approx < 2 mins) for analysis." 
+        : "File size is too large. Please upload an audio file smaller than 20MB."
+      );
       return;
     }
     onFileSelect(file);
@@ -76,31 +82,44 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileSelect, disabled }) => {
 
         <input
           type="file"
-          accept="audio/*"
+          accept="audio/*,video/*"
           onChange={handleInputChange}
           disabled={disabled}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-20"
         />
         
         <div className={`
-          p-6 rounded-full mb-6 transition-all border-4
-          ${isDragging 
-            ? 'bg-echo-gold text-[#2a0a0a] border-[#2a0a0a]' 
-            : 'bg-[#1a0505] text-echo-gold border-echo-gold group-hover:scale-110'
-          }
+          flex items-center gap-4 mb-6 transition-transform group-hover:scale-110
         `}>
-          <Mic2 size={48} strokeWidth={1.5} />
+           <div className={`
+            p-5 rounded-full border-4
+            ${isDragging 
+              ? 'bg-echo-gold text-[#2a0a0a] border-[#2a0a0a]' 
+              : 'bg-[#1a0505] text-echo-gold border-echo-gold'
+            }
+          `}>
+            <Mic2 size={32} strokeWidth={2} />
+          </div>
+           <div className={`
+            p-5 rounded-full border-4
+            ${isDragging 
+              ? 'bg-echo-gold text-[#2a0a0a] border-[#2a0a0a]' 
+              : 'bg-[#1a0505] text-echo-gold border-echo-gold'
+            }
+          `}>
+            <Video size={32} strokeWidth={2} />
+          </div>
         </div>
 
         <h3 className="text-3xl font-bold text-white mb-2 uppercase brand-font tracking-wide">
-          Upload Lecture Audio
+          Upload Audio or Video
         </h3>
         <p className="text-[#d4b996] text-sm max-w-sm mx-auto mb-8 font-serif italic">
-          "Drop your recording here to begin the show." <br/> Max size 10MB.
+          "Drop your lecture recording here to begin the show." <br/> Max size 20MB.
         </p>
         
         <div className="px-8 py-3 bg-[#7f1d1d] text-white text-xs font-bold uppercase tracking-widest rounded-sm border border-[#450a0a] group-hover:bg-[#991b1b] transition-colors shadow-lg">
-          Select Audio Track
+          Select Media File
         </div>
         
         {error && (

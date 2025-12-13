@@ -4,6 +4,7 @@ import FileUpload from './components/FileUpload';
 import AnalysisDisplay from './components/AnalysisDisplay';
 import StoryboardGrid from './components/StoryboardGrid';
 import PlayerOverlay from './components/PlayerOverlay';
+import IntroCurtains from './components/IntroCurtains';
 import { analyzeAudio, generateImageForScene, playWelcomeMessage } from './services/geminiService';
 import { downloadStoryboardCollage, renderVideo } from './services/exportService';
 import { saveSession, loadSession, clearSession } from './services/storageService';
@@ -16,7 +17,6 @@ const App: React.FC = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [isRenderingVideo, setIsRenderingVideo] = useState(false);
   const [renderProgress, setRenderProgress] = useState(0);
-  const [isPlayingIntro, setIsPlayingIntro] = useState(false);
   
   // Audio state
   const [audioFile, setAudioFile] = useState<Blob | null>(null);
@@ -56,13 +56,9 @@ const App: React.FC = () => {
 
   const handlePlayIntro = async () => {
     try {
-      setIsPlayingIntro(true);
       await playWelcomeMessage();
     } catch (e) {
       console.error("Failed to play intro", e);
-    } finally {
-      // Keep loading state briefly to prevent double clicks during fetch
-      setTimeout(() => setIsPlayingIntro(false), 2000);
     }
   };
 
@@ -131,13 +127,6 @@ const App: React.FC = () => {
               }
             }));
 
-            // Save incremental progress after each batch
-            if (audioFile) {
-                 // Use a functional update in saveSession context if needed, but here we just grab current state implicitly via next render
-                 // We can't easily grab the *very latest* state here without ref, so we skip exact persistence of every batch 
-                 // to avoid complexity, but we will persist at the end.
-            }
-
             // Small delay to be gentle on rate limits
             if (i + BATCH_SIZE < scenes.length) {
               await delay(500); 
@@ -169,20 +158,88 @@ const App: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const newUrl = e.target?.result as string;
+      const isVideo = file.type.startsWith('video/');
+
       setResult((prev) => {
         if (!prev) return null;
         const newStoryboard = [...prev.storyboard];
         newStoryboard[index] = {
           ...newStoryboard[index],
-          imageUrl: newUrl,
+          imageUrl: isVideo ? undefined : newUrl, // If video, clear the image URL
+          videoUrl: isVideo ? newUrl : undefined, // If video, set the video URL
           isLoadingImage: false,
-          isUserUploaded: true
+          isUserUploaded: true,
+          isRegenerating: false
         };
         if (audioFile) saveSession(audioFile, audioFile.type, { ...prev, storyboard: newStoryboard }, AppState.COMPLETE);
         return { ...prev, storyboard: newStoryboard };
       });
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleScenePromptUpdate = (index: number, newPrompt: string) => {
+    setResult((prev) => {
+      if (!prev) return null;
+      const newStoryboard = [...prev.storyboard];
+      newStoryboard[index] = {
+        ...newStoryboard[index],
+        visual_prompt: newPrompt
+      };
+      return { ...prev, storyboard: newStoryboard };
+    });
+  };
+
+  const handleSceneCaptionUpdate = (index: number, newCaption: string) => {
+    setResult((prev) => {
+      if (!prev) return null;
+      const newStoryboard = [...prev.storyboard];
+      newStoryboard[index] = {
+        ...newStoryboard[index],
+        caption: newCaption
+      };
+      return { ...prev, storyboard: newStoryboard };
+    });
+  };
+
+  const handleRegenerateImage = async (index: number, visualPrompt: string) => {
+    // Set loading state for this specific scene
+    setResult((prev) => {
+      if (!prev) return null;
+      const newStoryboard = [...prev.storyboard];
+      newStoryboard[index] = { ...newStoryboard[index], isRegenerating: true };
+      return { ...prev, storyboard: newStoryboard };
+    });
+
+    try {
+      const imageUrl = await generateImageForScene(visualPrompt);
+      
+      setResult((prev) => {
+        if (!prev) return null;
+        const newStoryboard = [...prev.storyboard];
+        newStoryboard[index] = {
+          ...newStoryboard[index],
+          imageUrl,
+          videoUrl: undefined, // Clear any user uploaded video when generating new image
+          isRegenerating: false,
+          isUserUploaded: false 
+        };
+        
+        if (audioFile) {
+            saveSession(audioFile, audioFile.type, { ...prev, storyboard: newStoryboard }, AppState.COMPLETE);
+        }
+        return { ...prev, storyboard: newStoryboard };
+      });
+    } catch (e) {
+      console.error("Failed to regenerate image", e);
+      // Reset loading state on error
+      setResult((prev) => {
+        if (!prev) return null;
+        const newStoryboard = [...prev.storyboard];
+        newStoryboard[index] = { ...newStoryboard[index], isRegenerating: false };
+        return { ...prev, storyboard: newStoryboard };
+      });
+    }
   };
 
   const handleSceneTimestampUpdate = (index: number, timestamp: number) => {
@@ -253,6 +310,9 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#1a0505] text-echo-cream selection:bg-echo-gold selection:text-white pb-20 overflow-x-hidden">
       
+      {/* INTRO CURTAINS OVERLAY */}
+      <IntroCurtains onOpen={handlePlayIntro} />
+
       {/* THEATER CURTAINS - Fixed decorative sidebars */}
       <div className="fixed inset-y-0 left-0 w-8 md:w-24 bg-curtain-pattern shadow-2xl z-0 border-r-4 border-[#2a0505]"></div>
       <div className="fixed inset-y-0 right-0 w-8 md:w-24 bg-curtain-pattern shadow-2xl z-0 border-l-4 border-[#2a0505]"></div>
@@ -281,20 +341,6 @@ const App: React.FC = () => {
           </div>
 
           <div className="h-1 w-32 bg-echo-gold mx-auto rounded-full mt-8 mb-6"></div>
-          
-          {/* Audio Introduction Button */}
-          <div className="flex justify-center mb-6">
-             <button 
-               onClick={handlePlayIntro}
-               disabled={isPlayingIntro}
-               className="flex items-center gap-2 bg-[#2a0a0a] hover:bg-[#3a0a0a] text-echo-gold border border-echo-gold/50 hover:border-echo-gold px-5 py-2 rounded-full transition-all shadow-lg active:scale-95 group disabled:opacity-50"
-             >
-               {isPlayingIntro ? <Loader2 size={18} className="animate-spin" /> : <Volume2 size={18} className="group-hover:text-white transition-colors" />}
-               <span className="text-xs font-bold uppercase tracking-widest group-hover:text-white transition-colors">
-                 {isPlayingIntro ? 'Playing Introduction...' : 'Hear Introduction'}
-               </span>
-             </button>
-          </div>
           
           <p className="text-xl text-[#d4b996] max-w-2xl mx-auto font-serif italic opacity-90 hidden md:block">
             "A Deep Dive into Ultrasound Physics & Clinical Education from the Stage."
@@ -407,6 +453,9 @@ const App: React.FC = () => {
                 scenes={result.storyboard} 
                 onSceneImageUpdate={handleSceneImageUpdate} 
                 onSceneTimestampUpdate={handleSceneTimestampUpdate}
+                onScenePromptUpdate={handleScenePromptUpdate}
+                onSceneCaptionUpdate={handleSceneCaptionUpdate}
+                onRegenerateImage={handleRegenerateImage}
               />
             </div>
           </div>

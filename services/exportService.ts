@@ -1,5 +1,8 @@
 import { StoryboardScene } from "../types";
 
+// Helper to remove formatting characters for canvas rendering
+const cleanText = (text: string) => text.replace(/\*\*/g, '').replace(/\*/g, '');
+
 export const downloadStoryboardCollage = async (title: string, scenes: StoryboardScene[]) => {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
@@ -116,7 +119,9 @@ export const downloadStoryboardCollage = async (title: string, scenes: Storyboar
     ctx.fillStyle = '#e2e8f0'; // Slate 200
     ctx.font = `${captionFontSize}px Inter, sans-serif`;
     
-    const words = scene.caption.split(' ');
+    // Clean formatted text for canvas
+    const plainCaption = cleanText(scene.caption);
+    const words = plainCaption.split(' ');
     let line = '';
     let lineY = y + imageHeight + 40;
     const maxWidth = cardWidth - (textPadding * 2);
@@ -320,7 +325,11 @@ export const renderVideo = async (
           const fontSize = 40;
           ctx.font = `bold ${fontSize}px sans-serif`;
           ctx.textAlign = 'center';
-          const textWidth = ctx.measureText(currentCaption).width;
+          
+          // Use cleaned text for width measurement and drawing
+          const plainCaption = cleanText(currentCaption);
+          
+          const textWidth = ctx.measureText(plainCaption).width;
           const boxWidth = Math.min(textWidth + 60, canvas.width - 100);
           
           // Simple multiline logic if needed, but for now simple wrap or single line
@@ -328,7 +337,7 @@ export const renderVideo = async (
           ctx.fillRect((canvas.width/2) - (boxWidth/2), bottomY - fontSize - 20, boxWidth, fontSize + 40);
           
           ctx.fillStyle = '#fff';
-          ctx.fillText(currentCaption, canvas.width / 2, bottomY - 20, boxWidth - 40);
+          ctx.fillText(plainCaption, canvas.width / 2, bottomY - 20, boxWidth - 40);
       }
       
       requestAnimationFrame(renderLoop);

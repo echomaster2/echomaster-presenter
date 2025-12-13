@@ -96,15 +96,15 @@ export const playWelcomeMessage = async (): Promise<void> => {
 /**
  * Step 1: Analyze the audio file to get transcript, metadata, and storyboard prompts.
  */
-export const analyzeAudio = async (base64Audio: string, mimeType: string): Promise<AnalysisResult> => {
+export const analyzeAudio = async (base64Data: string, mimeType: string): Promise<AnalysisResult> => {
   try {
-    const modelId = "gemini-2.5-flash"; // Good for multimodal understanding (Audio -> Text)
+    const modelId = "gemini-2.5-flash"; // Good for multimodal understanding (Audio/Video -> Text)
     
     const prompt = `
       Act as the charismatic host of "Echomasters: Sonography Songs & Lectures".
       
       **CORE DIRECTIVE: RAPID-FIRE VISUALS (MUSIC VIDEO STYLE)**
-      You are creating a highly dynamic, fast-paced visual storyboard for a song or high-energy lecture.
+      You are creating a highly dynamic, fast-paced visual storyboard for a song or high-energy lecture (Audio or Video source).
       
       **CRITICAL TIMING RULE**: 
       - **Generate a new visual scene every 1.2 to 2.0 seconds.** 
@@ -118,7 +118,7 @@ export const analyzeAudio = async (base64Audio: string, mimeType: string): Promi
       
       **GOAL**: Create a high-yield study guide that feels like a music video.
 
-      1. **Transcribe** the audio.
+      1. **Transcribe** the spoken content from the media file.
       2. **Generate Metadata**: 
          - Title: Catchy, "Show Title" style.
          - Keywords: Medical terms.
@@ -146,7 +146,7 @@ export const analyzeAudio = async (base64Audio: string, mimeType: string): Promi
           {
             inlineData: {
               mimeType: mimeType,
-              data: base64Audio
+              data: base64Data
             }
           },
           {
@@ -212,7 +212,7 @@ export const analyzeAudio = async (base64Audio: string, mimeType: string): Promi
     return result;
 
   } catch (error) {
-    console.error("Error analyzing audio:", error);
+    console.error("Error analyzing media:", error);
     throw error;
   }
 };
